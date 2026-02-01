@@ -1,0 +1,21 @@
+{
+  "name": "vue-unused",
+  "version": "1.0.0",
+  "description": "Dead Code and Dead Export Detector for Vue3",
+  "main": "dist/index.js",
+  "bin": {
+    "vue-unused": "./bin/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "typescript": "^5.2.2",
+    "@types/node": "^20.4.5",
+    "commander": "^11.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.4.5"
+  }
+}
