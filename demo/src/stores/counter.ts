@@ -8,3 +8,5 @@ export const useCounterStore = defineStore('counter', {
     },
   },
 })
+
+// changed

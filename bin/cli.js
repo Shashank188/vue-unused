@@ -7,8 +7,9 @@ program
   .name('vue-unused')
   .description('Dead Code and Dead Export Detector for Vue3')
   .version('1.0.0')
-  .action(() => {
-    detectUnused();
+  .option('-p, --path <path>', 'path to Vue project', '.')
+  .action((options) => {
+    detectUnused(options.path);
   });
 
 program.parse();

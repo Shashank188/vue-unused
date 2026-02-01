@@ -10,39 +10,44 @@ interface Result {
   reason: string;
 }
 
-function getStagedFiles(): string[] {
+function getStagedFiles(projectRoot: string): string[] {
   try {
-    const output = execSync('git diff --name-only --cached', { encoding: 'utf8' });
-    return output.trim().split('\n').filter(f => f && (f.endsWith('.ts') || f.endsWith('.js') || f.endsWith('.vue') || f.endsWith('.json')));
+    const gitDir = path.join(process.cwd(), '.git');
+    const output = execSync('git diff --name-only --cached', { cwd: projectRoot, env: { ...process.env, GIT_DIR: gitDir }, encoding: 'utf8' });
+    return output.trim().split('\n').filter(f => f).map(f => path.resolve(projectRoot, f)).filter(f => fs.existsSync(f) && (f.endsWith('.ts') || f.endsWith('.js') || f.endsWith('.vue') || f.endsWith('.json')));
   } catch {
     return [];
   }
 }
 
-function getEntryPoints(): string[] {
-  const entries = ['src/main.ts'];
+function getEntryPoints(projectRoot: string): string[] {
+  const entries = [path.join(projectRoot, 'src/main.ts')];
   // Add stores
-  if (fs.existsSync('src/stores')) {
-    const stores = fs.readdirSync('src/stores').filter(f => f.endsWith('.ts')).map(f => path.join('src/stores', f));
+  const storesDir = path.join(projectRoot, 'src/stores');
+  if (fs.existsSync(storesDir)) {
+    const stores = fs.readdirSync(storesDir).filter(f => f.endsWith('.ts')).map(f => path.join(storesDir, f));
     entries.push(...stores);
   }
   // views, pages, plugins, routes
   ['views', 'pages', 'plugins', 'routes'].forEach(dir => {
-    if (fs.existsSync(`src/${dir}`)) {
-      const files = fs.readdirSync(`src/${dir}`).filter(f => f.endsWith('.ts') || f.endsWith('.vue')).map(f => path.join(`src/${dir}`, f));
+    const dirPath = path.join(projectRoot, 'src', dir);
+    if (fs.existsSync(dirPath)) {
+      const files = fs.readdirSync(dirPath).filter(f => f.endsWith('.ts') || f.endsWith('.vue')).map(f => path.join(dirPath, f));
       entries.push(...files);
     }
   });
   // vite.config.ts
-  if (fs.existsSync('vite.config.ts')) entries.push('vite.config.ts');
+  const viteConfig = path.join(projectRoot, 'vite.config.ts');
+  if (fs.existsSync(viteConfig)) entries.push(viteConfig);
   // package.json scripts
-  if (fs.existsSync('package.json')) {
-    const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+  const pkgPath = path.join(projectRoot, 'package.json');
+  if (fs.existsSync(pkgPath)) {
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
     for (const script of Object.values(pkg.scripts || {})) {
       const str = script as string;
       const match = str.match(/(ts-node|node)\s+(.+)/);
       if (match) {
-        const file = match[2].split(' ')[0];
+        const file = path.resolve(projectRoot, match[2].split(' ')[0]);
         if (fs.existsSync(file)) entries.push(file);
       }
     }
@@ -66,9 +71,11 @@ function getSourceFile(filePath: string): ts.SourceFile | undefined {
   return sourceFile;
 }
 
-export function detectUnused() {
-  const staged = getStagedFiles();
-  const entries = getEntryPoints();
+export function detectUnused(projectPath: string = '.') {
+  const projectRoot = path.resolve(process.cwd(), projectPath);
+  const staged = getStagedFiles(projectRoot);
+  const entries = getEntryPoints(projectRoot);
+  const relative = (p: string) => path.relative(projectRoot, p);
 
   // Map of file to exports
   const fileExports: Map<string, Set<string>> = new Map();
@@ -170,7 +177,7 @@ export function detectUnused() {
     if (!usedFiles.has(file)) {
       results.push({
         category: 'files',
-        item: file,
+        item: relative(file),
         confidence: 100,
         reason: 'File not reachable from entry points'
       });
@@ -185,7 +192,7 @@ export function detectUnused() {
       if (!usedExports.has(key)) {
         results.push({
           category: 'exports',
-          item: key,
+          item: `${relative(file)}:${exp}`,
           confidence: 100,
           reason: 'Export not imported'
         });
