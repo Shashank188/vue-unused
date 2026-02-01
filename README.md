@@ -75,6 +75,8 @@ Sample Output:
 }
 ```
 
+Note: Used files like `src/components/Lazy.vue` (dynamically imported) are not listed as they are considered used.
+
 ## Demo
 
 See demo/ for a sample Vue3 project with used and unused code.

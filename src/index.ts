@@ -12,9 +12,10 @@ interface Result {
 
 function getStagedFiles(projectRoot: string): string[] {
   try {
-    const gitDir = path.join(process.cwd(), '.git');
-    const output = execSync('git diff --name-only --cached', { cwd: projectRoot, env: { ...process.env, GIT_DIR: gitDir }, encoding: 'utf8' });
-    return output.trim().split('\n').filter(f => f).map(f => path.resolve(projectRoot, f)).filter(f => fs.existsSync(f) && (f.endsWith('.ts') || f.endsWith('.js') || f.endsWith('.vue') || f.endsWith('.json')));
+    const repoRoot = process.cwd();
+    const gitDir = path.join(repoRoot, '.git');
+    const output = execSync('git diff --name-only --cached', { cwd: repoRoot, env: { ...process.env, GIT_DIR: gitDir }, encoding: 'utf8' });
+    return output.trim().split('\n').filter(f => f).map(f => path.resolve(repoRoot, f)).filter(f => f.startsWith(projectRoot + path.sep) && fs.existsSync(f) && (f.endsWith('.ts') || f.endsWith('.js') || f.endsWith('.vue') || f.endsWith('.json')));
   } catch {
     return [];
   }
@@ -131,7 +132,8 @@ export function detectUnused(projectPath: string = '.') {
     usedFiles.add(filePath);
     const sourceFile = getSourceFile(filePath);
     if (!sourceFile) return;
-    ts.forEachChild(sourceFile, node => {
+
+    function processNode(node: ts.Node) {
       if (ts.isImportDeclaration(node)) {
         const module = (node.moduleSpecifier as ts.StringLiteral).text;
         const resolved = resolveModule(filePath, module);
@@ -162,8 +164,31 @@ export function detectUnused(projectPath: string = '.') {
             getExports(resolved).forEach(exp => usedExports.add(`${resolved}:${exp}`));
           }
         }
+      } else if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'defineAsyncComponent' && node.arguments.length > 0) {
+        const arg = node.arguments[0];
+        if (ts.isArrowFunction(arg) || ts.isFunctionExpression(arg)) {
+          // Walk the body for import calls
+          const walk = (n: ts.Node) => {
+            if (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && n.expression.text === 'import' && n.arguments.length > 0) {
+              const arg2 = n.arguments[0];
+              if (ts.isStringLiteral(arg2)) {
+                const module = arg2.text;
+                const resolved = resolveModule(filePath, module);
+                if (resolved) {
+                  traverse(resolved);
+                  getExports(resolved).forEach(exp => usedExports.add(`${resolved}:${exp}`));
+                }
+              }
+            }
+            ts.forEachChild(n, walk);
+          };
+          walk(arg.body);
+        }
       }
-    });
+      ts.forEachChild(node, processNode);
+    }
+
+    processNode(sourceFile);
   }
 
   // Start traversal from entries
