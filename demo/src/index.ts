@@ -1,0 +1,1 @@
+export { unusedFunc } from './unused1'
